@@ -112,7 +112,7 @@ class Plane(Renderable):
         self.h = h
         self.mat = mat
         # TODO XX debug
-        self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
+        # self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
 
     def render(self):
         self.do_operations()
@@ -142,7 +142,7 @@ class Slab(Element):
         self.th = th
         self.mat = mat
         # TODO XX debug
-        self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
+        # self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
         self.cuts = {}
         h_w = self.w / 2.0
         h_h = self.h / 2.0
@@ -158,6 +158,11 @@ class Slab(Element):
             Plane(self.w, self.th, [Move(x=-h_w, y=-h_h, z=-h_th), Rotate(90, x=1)]),
             Plane(self.w, self.th, [Move(x=-h_w, y=h_h, z=-h_th), Rotate(90, x=1)]),
         ]
+
+    def clone(self):
+        res = Slab(self.w, self.h, self.th, self.mat)
+        res.operations = deepcopy(self.operations)
+        return res
 
     def render(self):
         # TODO: nie obsługujemy wcięć

@@ -60,6 +60,69 @@ def set_view_3D(rect):
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
+def createAndCompileShader(type,source):
+    shader=glCreateShader(type)
+    glShaderSource(shader,source)
+    glCompileShader(shader)
+
+    # get "compile status" - glCompileShader will not fail with
+    # an exception in case of syntax errors
+
+    result=glGetShaderiv(shader,GL_COMPILE_STATUS)
+
+    if (result!=1): # shader didn't compile
+        raise Exception("Couldn't compile shader\nShader compilation Log:\n"+glGetShaderInfoLog(shader))
+    return shader
+
+vertex_shader=createAndCompileShader(GL_VERTEX_SHADER,"""
+varying vec3 v;
+varying vec3 N;
+
+void main(void)
+{
+
+   v = gl_ModelViewMatrix * gl_Vertex;
+   N = gl_NormalMatrix * gl_Normal;
+
+   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+
+}
+""");
+
+fragment_shader=createAndCompileShader(GL_FRAGMENT_SHADER,"""
+varying vec3 N;
+varying vec3 v;
+
+void main(void)
+{
+   vec3 L = gl_LightSource[0].position.xyz-v;
+
+   // "Lambert's law"? (see notes)
+   // Rather: faces will appear dimmer when struck in an acute angle
+   // distance attenuation
+
+   float Idiff = max(dot(normalize(L),N),0.0)*pow(length(L),-2.0); 
+
+   gl_FragColor = vec4(0.5,0,0.5,1.0)+ // purple
+                  vec4(1.0,1.0,1.0,1.0)*Idiff; // diffuse reflection
+}
+""");
+
+program=glCreateProgram()
+glAttachShader(program,vertex_shader)
+glAttachShader(program,fragment_shader)
+glLinkProgram(program)
+
+# try to activate/enable shader program
+# handle errors wisely
+
+try:
+    #glUseProgram(program)
+    pass
+except OpenGL.error.GLError:
+    print(glGetProgramInfoLog(program))
+    raise
+
 
 
 keys_pressed = mouse_buttons = mouse_position = mouse_rel = None
@@ -112,7 +175,17 @@ class Renderer(object):
         glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE)
 
         glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST)
+        glShadeModel(GL_SMOOTH)
         glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LEQUAL)
+
+        # glEnable(GL_LIGHTING)
+        glEnable(GL_LIGHT1)
+        glLightfv(GL_LIGHT1, GL_AMBIENT, (10.4, 0.4, 0.2, 0.1))
+        glLightfv(GL_LIGHT1, GL_DIFFUSE, (1.0, 1.0, 1.0, 1.0))
+        glLightfv(GL_LIGHT1, GL_SPECULAR, (1.0, 1.0, 1.0, 1.0))
+
+        glClearDepth(1.0)
 
         return True
 
@@ -130,6 +203,13 @@ class Renderer(object):
             cen[0], cen[1], cen[2],
             0, 1, 0
         )
+
+    def set_light(self, t):
+        ld = [sin(t / 16.0) * 4.0, sin(t / 20.0) * 4.0, cos(t / 16.0) * 4.0]
+
+        # pass data to fragment shader
+
+        glLightfv(GL_LIGHT0, GL_POSITION, [ld[0], ld[1], ld[2]]);
 
     def draw_surf(self, surf, x, y):
         w, h = surf.get_size()
@@ -154,14 +234,14 @@ class Renderer(object):
         surf = font36.render(text, True, c).convert_alpha()
 
         glColor4f(c[0],c[1],c[2], 1.0)
-        self.draw_surf(surf, loc[0], loc[1])
+        # self.draw_surf(surf, loc[0], loc[1])
 
     def render_scene(self, model, iter):
         # czyszczenie buforów: COLOR, DEPTH, ACCUM, STENCIL
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # coś z własciwego rysowania planszy, w tym setView3d i ustawienie punktu widzenia
-        self.set_camera(rad=3000.0, rot=[45.0, 30.0])
-
+        self.set_camera(rad=4000.0, rot=[iter, 25 * sin(iter/100)])
+        # self.set_light(iter)
         model.render()
 
         self.render_2d(model)
@@ -173,6 +253,7 @@ class Renderer(object):
         while True:
             if not handle_pygame_input(): break
             # state_module.state.draw()
+            model.set_frame(iter)
             self.render_scene(model, iter)
             iter+= 1
             pygame.display.flip()
