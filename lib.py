@@ -19,10 +19,18 @@ class Move(Operation):
         self.z = float(z)
 
     def do(self):
+        glPushMatrix()
         glTranslate(self.x, self.y, self.z)
 
     def undo(self):
-        glTranslate(-self.x, -self.y, -self.z)
+        glPopMatrix()
+
+    def __repr__(self):
+        moves = []
+        for (n, v) in zip('xyz', [self.x, self.y, self.z]):
+            if v != 0:
+                moves.append('%s by %d' % (n, v))
+        return 'Move ' + ', '.join(moves)+'.'
 
 
 class Rotate(Operation):
@@ -33,10 +41,11 @@ class Rotate(Operation):
         self.z = float(z)
 
     def do(self):
+        glPushMatrix()
         glRotate(self.ang, self.x, self.y, self.z)
 
     def undo(self):
-        glRotate(-self.ang, self.x, self.y, self.z)
+        glPopMatrix()
 
 
 class Renderable(object):
@@ -72,7 +81,7 @@ class Element(Renderable):
         for attr_name in self.__clonable_attrs__.split(' '):
             if attr_name in self.params:
                 res.params[attr_name] = deepcopy(self.params[attr_name])
-            elif hasattr(self.__dict__, attr_name):
+            elif attr_name in self.__dict__:
                 res.__dict__[attr_name] = deepcopy(self.__dict__[attr_name])
         for attr_name in self.__reference_attrs__.split(' '):
             if attr_name in self.params:
@@ -132,17 +141,22 @@ class Slab(Element):
         self.h = h
         self.th = th
         self.mat = mat
+        # TODO XX debug
+        self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
         self.cuts = {}
         h_w = self.w / 2.0
         h_h = self.h / 2.0
         h_th = self.th / 2.0
         self.planes = [
-            Plane(self.w, self.h, [Move(z=h_th)]),
-            Plane(self.w, self.h, [Move(z=-h_th)]),
-            Plane(self.h, self.th, [Rotate(90, x=1), Move(x=-h_w)]),
-            Plane(self.h, self.th, [Rotate(90, x=1), Move(x=h_w)]),
-            Plane(self.w, self.th, [Rotate(90, y=1), Move(y=-h_h)]),
-            Plane(self.w, self.th, [Rotate(90, y=1), Move(y=h_h)])
+            # główne płaszczyzny
+            Plane(self.w, self.h, [Move(x=-h_w, y=-h_h, z=h_th)]),
+            Plane(self.w, self.h, [Move(x=-h_w, y=-h_h, z=-h_th)]),
+            # ramki wzdłuż wysokości
+            Plane(self.th, self.h, [Move(x=-h_w, y=-h_h, z=h_th), Rotate(90, y=1)]),
+            Plane(self.th, self.h, [Move(x=h_w, y=-h_h, z=h_th), Rotate(90, y=1)]),
+            # ramki wzdłuż szerokości
+            Plane(self.w, self.th, [Move(x=-h_w, y=-h_h, z=-h_th), Rotate(90, x=1)]),
+            Plane(self.w, self.th, [Move(x=-h_w, y=h_h, z=-h_th), Rotate(90, x=1)]),
         ]
 
     def render(self):
@@ -153,6 +167,9 @@ class Slab(Element):
         for plane in self.planes:
             plane.render()
         self.undo_operations()
+
+    def __str__(self):
+        return "Slab %d x %d (th %d)\n\tOperations: %s" % (self.w, self.h, self.th, self.operations)
 
 
 class SlabSet(Element):
@@ -167,6 +184,7 @@ class SlabSet(Element):
         res = Element.clone(self)
         for slab in self.slabs:
             res.add_slab(slab.clone())
+        return res
 
     def render(self):
         self.do_operations()

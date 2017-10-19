@@ -41,19 +41,43 @@ class Szuflada(SlabSet):
         SlabSet.__init__(self)
         mat = Material(0xffff00)
         dno = Slab(w=SZ_SZER-SZ_GR_SC, h=SZ_GL-SZ_GR_SC, th=SZ_GR_SC, mat=mat)
-        dno.do(Rotate(90, x=1))
         dno.do(Move(y=-(SZ_WYS / 2 - SZ_GR_SC)))
-        self.add_slab(dno)
+        dno.do(Rotate(90, x=1))
         front = Slab(w=SZ_SZER, h=SZ_WYS, th=SZ_GR_SC, mat=mat)
         tyl = front.clone()
         front.do(Move(z=(SZ_GL/2 - SZ_GR_SC/2)))
         tyl.do(Move(z=-(SZ_GL/2 - SZ_GR_SC/2)))
+        lewy_bok = Slab(w=SZ_GL-2*SZ_GR_SC, h=SZ_WYS, th=SZ_GR_SC, mat=mat)
+        prawy_bok = lewy_bok.clone()
+        lewy_bok.do(Move(x=-(SZ_SZER/2-SZ_GR_SC/2)))
+        prawy_bok.do(Move(x=(SZ_SZER/2-SZ_GR_SC/2)))
+        lewy_bok.do(Rotate(90, y=1))
+        prawy_bok.do(Rotate(90, y=1))
+        self.add_slab(dno)
         self.add_slab(front)
         self.add_slab(tyl)
-        lewy_bok = Slab(w=SZ_GL-2*SZ_GR_SC, h=SZ_WYS, th=SZ_GR_SC, mat=mat)
-        lewy_bok.do(Rotate(90, y=1))
-        prawy_bok = lewy_bok.clone()
-        lewy_bok.do(Move(x=-(SZ_SZER-SZ_GR_SC/2)))
-        prawy_bok.do(Move(x=(SZ_SZER-SZ_GR_SC/2)))
         self.add_slab(lewy_bok)
         self.add_slab(prawy_bok)
+
+
+class Calosc(Element):
+    def __init__(self):
+        s1 = Szuflada()
+        s2 = s1.clone()
+        s3 = s1.clone()
+        s4 = s1.clone()
+        s2.do(Rotate(90, y=1))
+        s3.do(Rotate(180, y=1))
+        s4.do(Rotate(270, y=1))
+        self.szuflady = [s1, s2, s3, s4]
+        for s in self.szuflady:
+            s.do(Move(x=SZ_SZER/2, z=SZ_GL/2))
+
+
+
+    def render(self):
+        for szuflada in self.szuflady:
+            szuflada.render()
+
+
+
