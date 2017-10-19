@@ -1,42 +1,74 @@
 from copy import deepcopy
+from OpenGL.GL import *
+from OpenGL.GLU import *
+import random
 
 
-class V3(object):
+class Operation(object):
+    def do(self):
+        raise NotImplementedError()
+
+    def undo(self):
+        raise NotImplementedError()
+
+
+class Move(Operation):
     def __init__(self, x=0.0, y=0.0, z=0.0):
-        self.x = x
-        self.y = y
-        self.z = z
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
 
-    def __add__(self, other):
-        return V3(self.x + other.x, self.y + other.y, self.z + other.z)
+    def do(self):
+        glTranslate(self.x, self.y, self.z)
 
-    def __mul__(self, other):
-        if isinstance(other, V3):
-            return V3(self.x * other.x, self.y * other.y, self.z * other.z)
-        else:
-            return V3(self.x * other, self.y * other, self.z * other)
-
-    def __mod__(self, other):
-        if isinstance(other, V3):
-            return V3(self.x % other.x, self.y % other.y, self.z % other.z)
-        else:
-            return V3(self.x % other, self.y % other, self.z % other)
+    def undo(self):
+        glTranslate(-self.x, -self.y, -self.z)
 
 
+class Rotate(Operation):
+    def __init__(self, ang, x=0.0, y=0.0, z=0.0):
+        self.ang = float(ang)
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
 
-class Element():
+    def do(self):
+        glRotate(self.ang, self.x, self.y, self.z)
+
+    def undo(self):
+        glRotate(-self.ang, self.x, self.y, self.z)
+
+
+class Renderable(object):
+    def __init__(self):
+        self.operations = []
+
+    def render(self):
+        raise NotImplementedError()
+
+    def do_operations(self):
+        for oper in self.operations:
+            oper.do()
+
+    def undo_operations(self):
+        for oper in reversed(self.operations):
+            oper.undo()
+
+
+class Element(Renderable):
     __clonable_attrs__ = ''
     __reference_attrs__ = ''
 
     def __init__(self, **kwargs):
-        self.translation = V3()
-        self.rotation = V3()
+        Renderable.__init__(self)
+        self.mat = kwargs.pop('mat') if 'mat' in kwargs else None
         self.params = {}
         for k, v in kwargs.items():
             self.params[k] = v
 
     def clone(self):
         res = self.__class__()
+        res.operations = deepcopy(self.operations)
         for attr_name in self.__clonable_attrs__.split(' '):
             if attr_name in self.params:
                 res.params[attr_name] = deepcopy(self.params[attr_name])
@@ -49,32 +81,45 @@ class Element():
                 res.__dict__[attr_name] = self.__dict__[attr_name]
         return res
 
-    def rotate(self, ang_x=0.0, ang_y=0.0, ang_z=0.0):
-        self.rotation += V3(ang_x, ang_y, ang_z)
-
-    def move(self, d_x=0.0, d_y=0.0, d_z=0.0):
-        self.translation += V3(d_x, d_y, d_z)
-
-    def get_renderables(self):
-        return [self]
+    def do(self, operation):
+        self.operations.append(operation)
 
 
 class Material():
-    def __init__(self, kolor):
-        self.kolor = kolor
+    def __init__(self, r=0.0, g=0.0, b=0.0, a=1.0):
+        self.color = (r, g, b, a)
+
+    def render(self):
+        glColor4f(*self.color)
 
 
-class Plane():
-    def __init__(self, w, h, translation, rotation, mat):
+class Plane(Renderable):
+    def __init__(self, w, h, operations=None, mat=None):
+        Renderable.__init__(self)
+        if operations is not None:
+            for oper in operations:
+                self.operations.append(oper)
         self.w = w
         self.h = h
-        self.translation = translation
-        self.rotation = rotation
         self.mat = mat
+        # TODO XX debug
+        self.mat = Material(random.uniform(0.2, 1.0), random.uniform(0.2, 1.0), random.uniform(0.2, 1.0))
+
+    def render(self):
+        self.do_operations()
+        if self.mat is not None:
+            self.mat.render()
+        glBegin(GL_QUADS)
+        glVertex3f(0, 0, 0)
+        glVertex3f(self.w, 0, 0)
+        glVertex3f(self.w, self.h, 0)
+        glVertex3f(0, self.h, 0)
+        glEnd()
+        self.undo_operations()
 
 
 class Slab(Element):
-    __clonable_attrs__ = 'translation rotation w h th cuts'
+    __clonable_attrs__ = 'w h th cuts'
     __reference_attrs__ = 'mat'
 
     def cut_corner(self, corner, radius):
@@ -88,26 +133,26 @@ class Slab(Element):
         self.th = th
         self.mat = mat
         self.cuts = {}
-
-    def get_renderables(self):
-        # TODO: nie obsługujemy wcięć
-        res = []
         h_w = self.w / 2.0
         h_h = self.h / 2.0
         h_th = self.th / 2.0
-        t = self.translation
-        r = self.rotation
-        r_ud = r + V3(x=90.0)
-        r_ud %= 360.0
-        r_lr = r + V3(y=90.0)
-        r_lr %= 360.0
-        res.append(Plane(self.w, self.h, t+V3(z=h_th), r, self.mat))
-        res.append(Plane(self.w, self.h, t+V3(z=-h_th), r, self.mat))
-        res.append(Plane(self.h, self.th, t+V3(x=h_w), r_lr, self.mat))
-        res.append(Plane(self.h, self.th, t+V3(x=-h_w), r_lr, self.mat))
-        res.append(Plane(self.w, self.th, t+V3(y=h_h), r_ud, self.mat))
-        res.append(Plane(self.w, self.th, t+V3(y=-h_h), r_ud, self.mat))
-        return res
+        self.planes = [
+            Plane(self.w, self.h, [Move(z=h_th)]),
+            Plane(self.w, self.h, [Move(z=-h_th)]),
+            Plane(self.h, self.th, [Rotate(90, x=1), Move(x=-h_w)]),
+            Plane(self.h, self.th, [Rotate(90, x=1), Move(x=h_w)]),
+            Plane(self.w, self.th, [Rotate(90, y=1), Move(y=-h_h)]),
+            Plane(self.w, self.th, [Rotate(90, y=1), Move(y=h_h)])
+        ]
+
+    def render(self):
+        # TODO: nie obsługujemy wcięć
+        self.do_operations()
+        if self.mat is not None:
+            self.mat.render()
+        for plane in self.planes:
+            plane.render()
+        self.undo_operations()
 
 
 class SlabSet(Element):
@@ -119,19 +164,14 @@ class SlabSet(Element):
         self.slabs.append(slab)
 
     def clone(self):
-        res = SlabSet()
+        res = Element.clone(self)
         for slab in self.slabs:
             res.add_slab(slab.clone())
 
-    def rotate(self, ang_x=0.0, ang_y=0.0, ang_z=0.0):
-        pass  # TODO zmiana położeń każdego elementu odpowiednio, a potem obroty
-
-    def move(self, d_x=0.0, d_y=0.0, d_z=0.0):
+    def render(self):
+        self.do_operations()
+        if self.mat is not None:
+            self.mat.render()
         for slab in self.slabs:
-            slab.move(d_x, d_y, d_z)
-
-    def get_renderables(self):
-        res = []
-        for slab in self.slabs:
-            res += slab.get_renderables()
-        return res
+            slab.render()
+        self.undo_operations()

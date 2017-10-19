@@ -11,7 +11,7 @@ import lib
 screen_size = [800, 600]
 multisample = 0  # 16
 
-which_camera = 3
+which_camera = 2
 if which_camera == 1:
     camera_radius_def = 15.0
     camera_fov = 45.0
@@ -21,7 +21,7 @@ elif which_camera == 2:
     camera_fov = 20.0
     spacing = 2.0
 elif which_camera == 3:
-    camera_radius_def = 30.0
+    camera_radius_def = 40.0
     spacing = 4.0
 camera_rot_def = [150.0, 35.0]  # [170.0,20.0]
 camera_center_def = [2.0, 1.5 * spacing, 2.0]
@@ -56,11 +56,12 @@ def draw_square(x, y, z):
 
 
 def draw_plane(plane):
+
     glBegin(GL_QUADS)
-    glVertex3f(x, spacing * y, z)
-    glVertex3f(x + 1, spacing * y, z)
-    glVertex3f(x + 1, spacing * y, z + 1)
-    glVertex3f(x, spacing * y, z + 1)
+    glVertex3f(plane.translation.x, plane.translation.y, 0)
+    glVertex3f(plane.translation.x+plane.w, plane.translation.y, 0)
+    glVertex3f(plane.translation.x+plane.w, plane.translation.y+plane.h, 0)
+    glVertex3f(plane.translation.x, plane.translation.y+plane.h, 0)
     glEnd()
 
 
@@ -77,12 +78,23 @@ def set_view_2D(rect):
 
 
 def set_view_3D(rect):
+    # ustawia obszar widzenia - x, y, szer, wys
     glViewport(*list(map(_rndint, rect)))
+    # wybór stosu operacji, do którego będą dokładane od teraz macierze
+    # GL_MODELVIEW - stos widoku modeli
+    # GL_PROJECTION - stos widoku projekcji
+    # GL_TEXTURE - stos teksturowania
+    # GL_COLOR - stos wyliczeń kolorów
     glMatrixMode(GL_PROJECTION)
+    # zamienia (?) bieżącą macież na identycznościową, reset stosu?
     glLoadIdentity()
     if which_camera < 3:
-        gluPerspective(camera_fov, float(screen_size[0]) / float(screen_size[1]), 0.1, 100.0)
+        # ustawia projekcję w perspektywie (załadowanie macierzy)
+        # kąt widzenia (w stopniach), proporcje widoku, odległość obcinania z bliska, odległość obcinania z daleka
+        gluPerspective(camera_fov, float(screen_size[0]) / float(screen_size[1]), 0.1, 1000.0)
     else:
+        # ustawia widok prostopadły
+        # (przycinanie) lewy, prawy, dolny, górny, obcinanie z bliska, obcinanie z daleka
         glOrtho(-10.0, 10.0, -10.0, 10.0, -100.0, 100.0);
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
@@ -96,6 +108,7 @@ def set_camera(rect=[0, 0, screen_size[0], screen_size[1]], cen=camera_center, r
         cen[1] + rad * sin(radians(rot[1])),
         cen[2] + rad * sin(radians(rot[0])) * cos(radians(rot[1]))
     ]
+    # pozycja oka, pozycja punktu na który patrzymy, kierunek wektora do góry
     gluLookAt(
         camera_pos[0], camera_pos[1], camera_pos[2],
         cen[0], cen[1], cen[2],
@@ -153,22 +166,25 @@ class Renderer(object):
         glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, data)
         glRasterPos2i(0, 0)
 
-    def render_scene(self, model):
+    def render_scene(self, model, iter):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        # coś z własciwego rysowania planszy, w tym setView3d i ustawienie punktu widzenia
+        set_camera(rad=0.1*iter)
+
+        glClear(GL_DEPTH_BUFFER_BIT)
+
+        glColor4f(1, 1, 0, 1)
+        draw_square(1, 20, 10)
+        glColor4f(0.01*iter % 1.0, 0, 1, 1)
+
+        model.render()
+
+        # widok 2D - do rysowania napisów itp
         set_view_2D([0, 0, screen_size[0], screen_size[1]])
-
-        def get_drawloc(surf, index):
-            return [
-                screen_size[0] / 2 - surf.get_width() / 2,
-                screen_size[1] / 2 - surf.get_height() / 2 - 50 * index
-            ]
-
-        # jakiś napis
         font36 = pygame.font.SysFont("Times New Roman", 36)
         text = "Bla bla bla"
         surf = font36.render(text, True, (255, 255, 255))
-        loc = get_drawloc(surf, 0)
-
+        loc = [2.0, 2.0]
         c = [0.6, 0.6, 0.6, 1.0]
         if mouse_position[0] > loc[0] and mouse_position[0] < loc[0] + surf.get_width():
             if mouse_position[1] > loc[1] and mouse_position[1] < loc[1] + surf.get_height():
@@ -179,31 +195,18 @@ class Renderer(object):
         surf = font36.render(text, True, c).convert_alpha()
 
         # glColor4f(c[0],c[1],c[2], 1.0)
+        glColor4f(0, 1, 1, 1)
         self.draw_surf(surf, loc[0], loc[1])
-
-        # coś z własciwego rysowania planszy
-        set_camera()
-
-        glClear(GL_DEPTH_BUFFER_BIT)
-
-        glColor4f(1, 1, 0, 1)
-        draw_square(1, 20, 10)
-        glColor4f(1, 0, 1, 1)
-
-        primitives = model.get_renderables()
-        for p in primitives:
-            if isinstance(p, lib.Plane):
-                pass # draw_plane(p)
-            else:
-                raise Exception('Can not render', p.__class__)
 
     def render(self, model):
 
         clock = pygame.time.Clock()
+        iter = 0
         while True:
             if not handle_pygame_input(): break
             # state_module.state.draw()
-            self.render_scene(model)
+            self.render_scene(model, iter)
+            iter+= 1
             pygame.display.flip()
 
             clock.tick(30)
